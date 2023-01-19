@@ -1,0 +1,349 @@
+---
+title: "Data501 - Movies Project"
+author: "Manjushree Raghwani, Niroopa Kannan, Varun Myla & Hashavardhan Bellala"
+date: "Due Date = 12-16-2022"
+output: 
+  pdf_document:
+    includes:
+      in_header: header.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# **Research Question:**
+
+Q1) Oscar win actor/actress or director influence the overall performance or rating of the movie or not? OR Is an Oscar winning actor or actress in the cast associated with a better rating (in the context of multiple regression)?
+
+Q2) Are Critics and Audience ratings close to each other or not. if not, are the critics ratings biased? OR Is critics’ rating associated with audience’s rating, in the context of regression model with other potential predictors.
+
+Q3) Create additional variable 'Oscar' with a class "yes or no" to identify whether an movie has won atleast one Oscar award and create a model with other variable. Check if there is any significant difference after adding 'Oscar' in the model with other variable or not?
+
+Q4) Create additional variable 'movie_score' which is a combination of imdb_rating & audience_score to check if they add more weightage to the response variable 'imdb_rating'?
+
+Q5) Insights about movies characteristics with reference to title_type, mpaa_rating or genre.
+
+Q6) Predicting imdb_rating. Show sample test case.
+
+
+\newpage
+
+# **Importing Data set & Packages**
+```{r}
+library(rlang)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(car)
+library(VIM)
+library(psych)
+library(gridExtra)
+library(xtable)
+library(faraway)
+
+```
+
+```{r}
+load(url("http://people.math.binghamton.edu/qiao/data501/data/movies.RData"))
+```
+
+```{r}
+orgdf <-movies
+orgdf
+```
+
+\newpage
+
+# **Let's understand the data**
+We have 651 observation and 32 variables in the given data set. The response variable "audience_score" is numerical, and the predictor variable are mixed with numerical & categorical variables. There are 6 variables which which has only two class/levels "Yes & No" which can be comverted into numerical(will be done at later stage)
+```{r}
+str(movies)
+```
+```{r}
+summary(movies)
+```
+\newpage
+# **Exploratory Data Analysis**
+
+## Check for the duplicate row/observations. Will be removed if there are any.
+```{r}
+sum(duplicated(movies))
+
+# Deleting the duplicate entry:
+movies <- movies[!duplicated(movies), ]
+```
+## Missing values
+```{r}
+# Used 'colSums()' function to aggregate NA in each column
+colSums(sapply(movies, is.na))
+```
+
+## Dropping observations with missing values
+With less than 2% of the total observation, few details are missing. As the size is less, we are dropping the observations/row with missing values. 
+```{r}
+movies <- movies[!is.na(movies$runtime), ]
+movies <- movies[!is.na(movies$dvd_rel_year), ]
+movies <- movies[!is.na(movies$director), ]
+movies <- movies[!is.na(movies$studio), ]
+movies <- movies[!is.na(movies$actor1), ]
+dim(movies)
+```
+## Dropping unwanted/irrelevant variables
+1. Variables such as 'imdb_url' or 'rt_url' are excluded as they are not relevant to the purpose of identifying the popularity of the movie or imdb rating.
+2. Other irrelevant variables such as title, actors, dvd release dates and studio are excluded from the model.
+3.Theater release month was included assuming that movies released at certain times of the year may be more popular than others.
+```{r}
+movies <- subset(movies, select = -c(imdb_url))
+movies <- subset(movies, select = -c(rt_url))
+#movies <- subset(movies, select = -c(title))
+#movies <- subset(movies, select = -c(actor1))
+#movies <- subset(movies, select = -c(actor2))
+movies <- subset(movies, select = -c(actor3))
+movies <- subset(movies, select = -c(actor4))
+movies <- subset(movies, select = -c(actor5))
+movies <- subset(movies, select = -c(dvd_rel_year))
+movies <- subset(movies, select = -c(dvd_rel_month))
+movies <- subset(movies, select = -c(dvd_rel_day))
+#movies <- subset(movies, select = -c(studio))
+
+dim(movies)
+```
+## Converting binary variables into numeric:
+```{r}
+# Converting binary variable yes or no into numerical for calculating correlation between them.
+movies$best_dir_win<-ifelse(movies$best_dir_win=="yes",1,0)
+movies$best_actor_win<-ifelse(movies$best_actor_win=="yes",1,0)
+movies$best_actress_win<-ifelse(movies$best_actress_win=="yes",1,0)
+movies$best_pic_win<-ifelse(movies$best_pic_win=="yes",1,0)
+movies$best_pic_win<-ifelse(movies$best_pic_nom=="yes",1,0)
+```
+
+\newpage
+
+## Q1) Oscar win actor/actress or director influence the overall performance or rating of the movie or not? OR Is an Oscar winning actor or actress in the cast associated with a better rating (in the context of multiple regression)?
+```{r}
+# Model_1 created with Response variable as 'imdb_rating' and rest all the variables as predictor variable.
+
+model <- lm(imdb_rating ~ genre + runtime + best_actor_win + best_actress_win 
+            + best_dir_win + mpaa_rating + studio, data = movies)
+summary(model)
+```
+
+```{r}
+backwardeliminated_model <- step(model, direction = "backward", trace = FALSE)
+```
+
+```{r}
+summary(backwardeliminated_model)
+```
+```{r}
+anova(model, backwardeliminated_model)
+```
+**Conclusion**: As per the above base model, along with best actor, best actress and best director we have considered other variables like genre, runtime, studio & mpa rating to create a model where "imdb_rating" was my response variable. The R^2 and adjusted R^2 is 0.57 & 0.32 respectively.
+Whereas, post eliminating few variables based on backward elimination function, model finalized with genre, runtime, best director & mpaa rating as their final variables. The R^2 and adjusted R^2 is 0.30 & 0.28 respectively. With backward elimination(lowest AIC), it clearly evident that the best actor or actress are not influencing the performance of the movie, it is the Oscar wining director.
+
+\newpage
+## Q2)Is critics’ rating associated with audience’s rating, in the context of regression model with other potential predictors.
+
+*Correlation between audience_score and critics_score:*
+```{r}
+cor(movies$critics_score, movies$audience_score, use = 'everything', method = c('pearson'))
+```
+*Correlation between audience_score, critics_score and imdb_rating:*
+```{r}
+ggpairs(movies[, c('critics_score', 'audience_score', 'imdb_rating')])
+```
+**Conclusion:**
+1.Correlation below is calculated based on Pearson’s correlation. 
+2. With a correlation coefficient as high as 0.70, it is clear that critics and audience score most of the times agree with each other on the movie rating.
+3. Also their is high correlation of 0.862 between audience_score and imdb_rating.
+
+\newpage
+## Q3) Create additional variable 'Oscar' with a class "yes or no" to identify whether an movie has won atleast one Oscar award or not and create a model with other variable along with 'oscar'. Check if there is any significant difference after adding 'Oscar' in the model with other variable or not?
+```{r}
+movies$oscar <- ifelse(movies$best_actor_win == 1 | movies$best_actress_win == 1 | movies$best_dir_win == 1, "yes", "no")
+
+model_less_oscar <- lm(imdb_rating ~ audience_score + critics_score, data=movies)
+summary(model_less_oscar)
+```
+```{r}
+model_with_oscar <- lm(imdb_rating ~ audience_score + critics_score + oscar + runtime + genre, data=movies)
+summary(model_with_oscar)
+```
+```{r}
+library(car)
+crPlots(model_with_oscar)
+```
+
+
+**Conclusion:**
+1. A model with audience_score and critics_scoreas as a predictor accounts for 79.2 % (R-squared: 0.792,	Adjusted R-squared:  0.7913) of the variation in imdb_rating. 
+2. Adding the categorical variable 'oscar' improves this to only 81.2 %(R-squared:  0.8168,	Adjusted R-squared:  0.8127).
+3. However, we were interested in quantifying the difference between imdb_rating of movies with a director, actor or actress who has won an oscar award compared to one without an oscar award.
+4. The explanatory variables in our model (audience_score, critics_score, oscar, runtime  and genre) are significant predictors for the response variable (imdb_rating).
+
+\newpage
+## Q4) Create additional variable 'movie_score' which is a combination of imdb_rating & audience_score to check if they add more weightage to the response variable 'imdb_rating' 
+
+```{r}
+movie_score = ((movies$imdb_rating*10)+movies$audience_score)/2
+movies_1 <- movies %>% mutate(score = movie_score)
+```
+
+```{r}
+model_score_oscar <- lm(imdb_rating ~ movie_score + oscar, data=movies_1)
+summary(model_score_oscar)
+
+summary(model_score_oscar)$adj.r.squared
+```
+
+```{r}
+rev_model_score_oscar <- lm(imdb_rating ~ movie_score + oscar + genre + thtr_rel_month + runtime, data=movies_1)
+summary(rev_model_score_oscar)
+summary(rev_model_score_oscar)$adj.r.squared
+```
+
+```{r}
+library(car)
+avPlots(rev_model_score_oscar)
+```
+
+
+\newpage
+## Q5) Insights about movies characteristics with reference to title_type, mpaa_rating or genre. 
+```{r}
+p1 <- ggplot(data=movies, aes(x=genre)) + geom_bar(fill = "blue") + 
+  xlab("Movie Genre") + theme(axis.text.x=element_text(angle=90, 
+                                                       hjust=1, vjust=0))
+
+p2 <- ggplot(data=movies, aes(x=title_type)) + geom_bar(fill="blue") + 
+      xlab("Movie Type") +theme(axis.text.x=element_text(angle=90, 
+                                                         hjust=1, vjust=0))
+
+p3 <- ggplot(data=movies, aes(x=mpaa_rating)) + geom_bar(fill="blue") +  
+      xlab("Movie MPAA Rating") + 
+  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0))
+
+p4 <- ggplot(data=movies, aes(x=runtime)) +geom_histogram(
+  binwidth=10, fill="blue") + xlab("Movie Runtime")
+
+grid.arrange(p2, p3, p1, p4, nrow=2, top="Movie Characteristics")
+```
+```{r}
+library(ggplot2)
+g1 <- ggplot(data = movies, aes(x = thtr_rel_year)) + geom_histogram(colour = "black", fill = "orange", alpha = 0.5)
+g2 <- ggplot(data = movies, aes(x = thtr_rel_month)) + geom_histogram(colour = "black", fill = "blue", alpha = 0.5)
+g3 <- ggplot(data = movies, aes(x = thtr_rel_day)) + geom_histogram(colour = "black", fill = "green", alpha = 0.5)
+
+library(gridExtra)
+grid.arrange(g1, g2, g3, nrow = 1, ncol = 3)
+```
+```{r}
+g4 <- ggplot(data = movies, aes(y = genre , x = imdb_rating, colour = audience_score)) + geom_point()
+g4
+
+g5 <- ggplot(data = movies, aes(y = genre , x = factor(thtr_rel_month), size = imdb_rating, colour = imdb_rating)) + geom_point()
+g5
+```
+**Conclusion**:
+1. More movies are created and released under "Feature Film" title_type.
+2. Major movies released belongs to  mpaa_rating "R" & "PG-13 & PG" compared to others.
+3. Also viewers like to watch Action & Adventure, Comedy,Drama or Mstery & Suspense types/genres of movies.
+4. Movies are more released in the vacation season like in the month of Jan, Jun, Oct & Dec.
+
+\newpage
+## Q6) Prediction
+
+```{r}
+predict_model = lm(imdb_rating ~ imdb_num_votes + genre + runtime + actor1 +  mpaa_rating , data=movies)
+summary(predict_model)$r.squared
+summary(predict_model)$adj.r.squared
+#summary(predict_model)
+```
+```{r}
+X1 = model.matrix(lm(imdb_rating ~ imdb_num_votes + genre + runtime + actor1 +  mpaa_rating, data = movies))
+```
+
+
+```{r}
+library(glmnet)
+
+ridge <- glmnet(X1, movies$imdb_rating, family = 'gaussian',
+                lambda = exp(seq(-30,10,length.out=1000)), alpha = 0)
+
+G1 = plot(ridge, xvar='lambda', label=TRUE)
+```
+
+# The higher the lambda value , the more close it becomes to zero 
+```{r}
+library(glmnet)
+CV1 = cv.glmnet(X1, movies$imdb_rating)
+plot(CV1)
+```
+
+```{r}
+cv.glmnet(X1, movies$imdb_rating)$lambda.min
+```
+
+```{r}
+cv.glmnet(X1, movies$imdb_rating)$lambda.1se
+```
+```{r}
+rev_predict_model=lm(imdb_rating ~ X1 , data=movies)
+summary(rev_predict_model)$r.squared
+summary(rev_predict_model)$adj.r.squared
+#summary(predict_model)
+```
+
+```{r}
+#library(tidyverse)
+fit <- lm(rev_predict_model, movies)
+
+residual_standard_error <- summary(fit)$sigma
+mean_of_response_variable <- mean(movies$imdb_rating)
+error_percentage = (residual_standard_error / mean_of_response_variable) * 100
+print(error_percentage)
+```
+
+```{r}
+#orgdf %>% filter(title=="Old Partner") %>%
+#  select(c(genre,imdb_num_votes,actor1,mpaa_rating,runtime))
+
+library(knitr)
+data_1 <- data.frame(genre="Mystery & Suspense",  imdb_num_votes=6247, actor1="Gene Hackman", mpaa_rating = "R", runtime =  108)
+pred_1 <- predict(rev_predict_model, data_1, interval="predict")
+
+data_2 <- data.frame(genre="Documentary",  imdb_num_votes=333, actor1="Choi Won-kyun", mpaa_rating = "Unrated", runtime = 78 )
+pred_2 <- predict(rev_predict_model, data_2, interval="predict")
+
+# Show prediction results.
+df <- data.frame(a=c("The Package  -  ", "Old Partner  -  "),
+                 b=c(sprintf("%2.1f", pred_1[1]), 
+                     sprintf("%2.1f", pred_2[1])),
+                 d=c(sprintf("%2.1f - %2.1f", pred_1[1,2], pred_1[1,3]), 
+                     sprintf("%2.1f - %2.1f", pred_2[1,2], pred_2[1,3])),
+                 e=c("6.4", "7.8"))
+kable(df, col.names=c("Movie Title", "Predicted Rating", "95% Prediction Interval", "Actual Rating"))
+
+```
+```{r}
+#orgdf %>% filter(title=="Old Partner") %>%
+#  select(c(genre,imdb_num_votes,actor1,mpaa_rating,runtime))
+
+library(knitr)
+data_1 <- data.frame(genre="Mystery & Suspense",  imdb_num_votes=6247, actor1="Gene Hackman", mpaa_rating = "R", runtime =  108)
+pred_1 <- predict(predict_model, data_1, interval="predict")
+
+data_2 <- data.frame(genre="Documentary",  imdb_num_votes=333, actor1="Choi Won-kyun", mpaa_rating = "Unrated", runtime = 78 )
+pred_2 <- predict(predict_model, data_2, interval="predict")
+
+# Show prediction results.
+df <- data.frame(a=c("The Package  -  ", "Old Partner  -  "),
+                 b=c(sprintf("%2.1f", pred_1[1]), 
+                     sprintf("%2.1f", pred_2[1])),
+                 d=c(sprintf("%2.1f - %2.1f", pred_1[1,2], pred_1[1,3]), 
+                     sprintf("%2.1f - %2.1f", pred_2[1,2], pred_2[1,3])),
+                 e=c("6.4", "7.8"))
+kable(df, col.names=c("Movie Title", "Predicted Rating", "95% Prediction Interval", "Actual Rating"))
+```
+
